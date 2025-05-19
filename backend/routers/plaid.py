@@ -81,4 +81,19 @@ def get_user_holdings(user_id: str = Query(...)):
                 "institution_id": token.get("institution_id"),
                 "error": str(e)
             })
-    return {"holdings": all_holdings} 
+    return {"holdings": all_holdings}
+
+@router.get("/check_access_token")
+def check_access_token(user_id: str = Query(...)):
+    tokens = get_tokens_by_user(user_id)
+    if not tokens:
+        return {
+            "has_access_token": False,
+            "institution_name": None
+        }
+    
+    # Return the first institution's name since we're showing a single login status
+    return {
+        "has_access_token": True,
+        "institution_name": tokens[0]["institution"]
+    } 
