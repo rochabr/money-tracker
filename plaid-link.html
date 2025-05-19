@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plaid Link Test</title>
+  <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+</head>
+<body>
+  <h1>Plaid Link Test</h1>
+  <button id="link-btn">Connect a bank</button>
+  <pre id="result"></pre>
+  <script>
+    async function getLinkToken() {
+      // Replace with your actual user_id logic if needed
+      const userId = 'test-user-123';
+      const res = await fetch(`http://localhost:8000/plaid/create_link_token?user_id=${userId}`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      return data.link_token;
+    }
+
+    document.getElementById('link-btn').onclick = async function() {
+      const linkToken = await getLinkToken();
+      const handler = Plaid.create({
+        token: linkToken,
+        onSuccess: function(public_token, metadata) {
+          const userId = 'test-user-123'; // Or get this dynamically if you have user auth
+          document.getElementById('result').textContent =
+            'public_token: ' + public_token + '\n' + JSON.stringify(metadata, null, 2);
+
+          // POST the public_token to your backend, including user_id as a query param
+          fetch(`http://localhost:8000/plaid/exchange_token?user_id=${userId}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              public_token,
+              institution: metadata.institution ? metadata.institution.name : null,
+              institution_id: metadata.institution ? metadata.institution.institution_id : null
+            })
+          })
+          .then(response => response.json())
+          .then(data => {
+            document.getElementById('result').textContent +=
+              '\n\naccess_token: ' + data.access_token + '\nitem_id: ' + data.item_id;
+          })
+          .catch(err => {
+            document.getElementById('result').textContent += '\n\nError: ' + err;
+          });
+        },
+        onExit: function(err, metadata) {
+          if (err) {
+            alert('Plaid Link exited with error: ' + err.display_message);
+          }
+        }
+      });
+      handler.open();
+    };
+  </script>
+</body>
+</html> 
