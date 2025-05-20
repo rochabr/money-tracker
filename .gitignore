@@ -15,6 +15,9 @@ ENV/
 
 # Local data files
 plaid_tokens.json
+accounts.json
+net_worth_history.json
+holdings.json
 
 # VSCode
 .vscode/

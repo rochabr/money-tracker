@@ -16,9 +16,12 @@ function App() {
   const [copySuccess, setCopySuccess] = useState(false)
   const [showExportModal, setShowExportModal] = useState(false)
   const [selectedAccounts, setSelectedAccounts] = useState({})
-  const [groupBy, setGroupBy] = useState('institution') // 'institution' or 'type'
+  const [groupBy, setGroupBy] = useState('institution')
   const [expandedGroups, setExpandedGroups] = useState({})
   const [viewDropdownOpen, setViewDropdownOpen] = useState(false)
+  const [netWorthHistory, setNetWorthHistory] = useState([])
+  const [lastUpdated, setLastUpdated] = useState(null)
+  const [showHistoryModal, setShowHistoryModal] = useState(false)
   const viewOptions = [
     { label: 'By institution', value: 'group' },
     { label: 'By type', value: 'list' }
@@ -86,6 +89,80 @@ function App() {
     return totals
   }, [])
 
+  const loadLocalData = async () => {
+    try {
+      setIsLoading(true)
+      setError(null)
+      
+      const response = await fetch(`http://localhost:8000/plaid/user/saved-data?user_id=${userId}`)
+      const data = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to load local data')
+      }
+      
+      // Update state with local data
+      if (data.accounts && data.accounts.length > 0) {
+        setAccounts(data.accounts)
+        // Calculate current net worth from accounts
+        const currentNetWorth = calculateNetWorth(data.accounts)
+        setNetWorth(currentNetWorth)
+      }
+      
+      if (data.holdings && data.holdings.length > 0) {
+        setHoldings(data.holdings)
+      }
+      
+      if (data.net_worth_history && data.net_worth_history.length > 0) {
+        setNetWorthHistory(data.net_worth_history)
+      }
+      
+      if (data.last_updated) {
+        setLastUpdated(new Date(data.last_updated))
+      }
+    } catch (error) {
+      console.error('Error loading local data:', error)
+      setError(`Error loading local data: ${error.message}`)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const loadSavedData = async () => {
+    try {
+      setIsLoading(true)
+      setError(null)
+      
+      const response = await fetch(`http://localhost:8000/plaid/user/saved-data?user_id=${userId}`)
+      const data = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to load saved data')
+      }
+      
+      // Update state with saved data if available
+      if (data.accounts) {
+        setAccounts(data.accounts)
+        // Calculate current net worth from saved accounts
+        const currentNetWorth = calculateNetWorth(data.accounts)
+        setNetWorth(currentNetWorth)
+      }
+      
+      if (data.holdings) {
+        setHoldings(data.holdings)
+      }
+      
+      if (data.last_updated) {
+        setLastUpdated(new Date(data.last_updated))
+      }
+    } catch (error) {
+      console.error('Error loading saved data:', error)
+      setError(`Error loading saved data: ${error.message}`)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   const fetchAllData = async () => {
     try {
       setIsLoading(true)
@@ -110,6 +187,9 @@ function App() {
       setNetWorth(netWorthData)
       setAccounts(netWorthData.accounts)
       setHoldings(holdingsData.holdings)
+      
+      // Update last updated timestamp
+      setLastUpdated(new Date())
     } catch (error) {
       console.error('Error fetching data:', error)
       setError(`Error fetching data: ${error.message}`)
@@ -300,7 +380,7 @@ function App() {
                 const security = holdings
                   .find(h => h.institution === selectedAccount.institution)
                   ?.holdings?.securities?.find(s => s.security_id === holding.security_id)
-  return (
+                return (
                   <div key={`${holding.security_id}-${holding.account_id}`} className="holding-card">
                     <div className="holding-name">{security?.name || 'Unknown Security'}</div>
                     <div className="holding-details">
@@ -341,7 +421,7 @@ function App() {
                 title="Copy selected holdings data"
               >
                 {copySuccess ? '✓ Copied!' : '📋 Export Selected'}
-        </button>
+              </button>
               <button className="close-button" onClick={onClose}>&times;</button>
             </div>
           </div>
@@ -487,24 +567,45 @@ function App() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [viewDropdownOpen]);
 
+  // Load local data on component mount
+  useEffect(() => {
+    loadLocalData()
+  }, [])
+
+  // Load saved data on component mount
+  useEffect(() => {
+    loadSavedData()
+  }, [])
+
   return (
     <div className="App">
       <header className="App-header">
+        {lastUpdated && (
+          <div className="last-updated">
+            Last updated: {lastUpdated.toLocaleString()}
+          </div>
+        )}
         <div className="action-buttons-row">
-          <button className="action-card-btn" onClick={fetchAllData} disabled={isLoading}>
-            <span className="action-btn-icon"><i className="fas fa-calculator"></i></span>
-            <span className="action-btn-label">Calculate Net Worth</span>
+          <button 
+            className="action-card-btn" 
+            onClick={fetchAllData} 
+            disabled={isLoading}
+          >
+            <span className="action-btn-icon">💰</span>
+            <span className="action-btn-label">
+              {isLoading ? 'Loading...' : 'Calculate Net Worth'}
+            </span>
           </button>
           <button className="action-card-btn" onClick={handleLinkAccounts} disabled={isLoading}>
-            <span className="action-btn-icon"><i className="fas fa-link"></i></span>
+            <span className="action-btn-icon">🔗</span>
             <span className="action-btn-label">Link Account</span>
           </button>
           <button className="action-card-btn" onClick={() => setShowExportModal(true)} disabled={isLoading || !holdings.length}>
-            <span className="action-btn-icon"><i className="fas fa-file-export"></i></span>
+            <span className="action-btn-icon">📈</span>
             <span className="action-btn-label">Export Holdings</span>
           </button>
           <button className="action-card-btn" type="button">
-            <span className="action-btn-icon"><i className="fas fa-plus-circle"></i></span>
+            <span className="action-btn-icon">➕</span>
             <span className="action-btn-label">Add asset manually</span>
           </button>
         </div>
@@ -531,6 +632,14 @@ function App() {
             <section>
               <div className="section-header">
                 <h2>Net Worth</h2>
+                {netWorthHistory.length > 0 && (
+                  <button 
+                    className="history-button"
+                    onClick={() => setShowHistoryModal(true)}
+                  >
+                    View History
+                  </button>
+                )}
               </div>
               {netWorth ? (
                 <div>
@@ -574,7 +683,7 @@ function App() {
                   </div>
                 </div>
               ) : (
-                <p>No data available</p>
+                <p>No data available. Click "Calculate Net Worth" to fetch your data.</p>
               )}
             </section>
             <section>
@@ -687,6 +796,52 @@ function App() {
           setSelectedAccounts({})
         }} />
       )}
+      {showHistoryModal && (
+        <HistoryModal 
+          history={netWorthHistory}
+          onClose={() => setShowHistoryModal(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+const HistoryModal = ({ history, onClose }) => {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>Net Worth History</h3>
+          <button className="close-button" onClick={onClose}>&times;</button>
+        </div>
+        <div className="modal-body">
+          <div className="history-list">
+            {history.map((entry, index) => (
+              <div key={index} className="history-entry">
+                <div className="history-date">
+                  {new Date(entry.date).toLocaleString()}
+                </div>
+                <div className="history-details">
+                  {Object.entries(entry.net_worth).map(([currency, amount]) => (
+                    <div key={currency} className="history-currency">
+                      <div className="currency">{currency}</div>
+                      <div className="amount">{formatCurrency(amount, currency)}</div>
+                      <div className="breakdown">
+                        <div className="assets">
+                          Assets: {formatCurrency(entry.assets[currency], currency)}
+                        </div>
+                        <div className="liabilities">
+                          Liabilities: {formatCurrency(entry.liabilities[currency], currency)}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
